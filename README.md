@@ -12,6 +12,12 @@ YouTube の広告スキップボタンをスペースキーで押せるように
 
 - **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/youtube-ad-skip-spacebar.user.js)**
 
+### お助けマン Time - シフトエクスポーター
+
+お助けマン Time のシフト画面に「テキストで取得」「CSVで取得」のフローティングボタンを追加します。ボタンを押すとモーダルにシフト情報が表示され、クリップボードにコピーできます。
+
+- **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/otasukeman-shift-exporter.user.js)**
+
 ---
 
 ## 使い方
