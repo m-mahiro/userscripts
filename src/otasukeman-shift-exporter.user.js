@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         お助けマン Time - シフトエクスポーター
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.1
+// @version      1.3
 // @description  お助けマン Time のシフト情報をテキスト/CSVで取得するボタンを追加します
 // @author       m-mahiro
 // @match        https://staff.otasuke-part.jp/*
@@ -26,12 +26,101 @@
   'use strict';
 
   // -------------------------------------------------------
+  // 日付（年・月）推定
+  // -------------------------------------------------------
+  // シフト画面には各日ブロックに日にちしか表示されず、月は表示されない。
+  // ヘッダー左上の月表示（.month-selector）は、スクロール領域の上端を
+  // 通過した直近の日ブロックの月を常に反映する仕様になっている。
+  // これを起点（アンカー）とし、日にちの並びが減少する（＝月が変わる）
+  // 箇所を検出しながら各日ブロックの年・月を推定する。
+  // 年はこの表示だけでは分からないため、端末の現在日時との近さから推定する。
+  function findScrollContainer(el) {
+    let node = el?.parentElement;
+    while (node && node !== document.body) {
+      const style = getComputedStyle(node);
+      if (node.scrollHeight > node.clientHeight + 5 && /(auto|scroll)/.test(style.overflowY)) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function getAnchor(dayGroups) {
+    const monthLabelEl = document.querySelector('.month-selector > span');
+    const monthMatch = monthLabelEl ? monthLabelEl.textContent.match(/\d+/) : null;
+
+    const now = new Date();
+    if (!monthMatch || dayGroups.length === 0) {
+      return { index: 0, year: now.getFullYear(), month: now.getMonth() + 1 };
+    }
+
+    const anchorMonth = parseInt(monthMatch[0], 10);
+
+    // スクロール領域の上端（y=0）を通過した直近の日ブロックを探す
+    const container = findScrollContainer(dayGroups[0]);
+    const containerTop = container.getBoundingClientRect().top;
+    let anchorIndex = 0;
+    let bestTop = -Infinity;
+    dayGroups.forEach((g, i) => {
+      const top = g.getBoundingClientRect().top - containerTop;
+      if (top <= 0 && top > bestTop) { bestTop = top; anchorIndex = i; }
+    });
+
+    // 月表示だけでは年が分からないため、現在日時との差が半年を超えないように補正する
+    let anchorYear = now.getFullYear();
+    const diff = anchorMonth - (now.getMonth() + 1);
+    if (diff > 6) anchorYear -= 1;
+    else if (diff < -6) anchorYear += 1;
+
+    return { index: anchorIndex, year: anchorYear, month: anchorMonth };
+  }
+
+  function computeDates(dayGroups) {
+    const map = new Map();
+    if (dayGroups.length === 0) return map;
+
+    const days = dayGroups.map(g => parseInt((g.querySelector('.day')?.textContent ?? '').trim(), 10));
+    const anchor = getAnchor(dayGroups);
+
+    let year = anchor.year;
+    let month = anchor.month;
+    map.set(dayGroups[anchor.index], { year, month });
+
+    for (let i = anchor.index + 1; i < dayGroups.length; i++) {
+      if (days[i] < days[i - 1]) {
+        month++;
+        if (month > 12) { month = 1; year++; }
+      }
+      map.set(dayGroups[i], { year, month });
+    }
+
+    year = anchor.year;
+    month = anchor.month;
+    for (let i = anchor.index - 1; i >= 0; i--) {
+      if (days[i] > days[i + 1]) {
+        month--;
+        if (month < 1) { month = 12; year--; }
+      }
+      map.set(dayGroups[i], { year, month });
+    }
+
+    return map;
+  }
+
+  // -------------------------------------------------------
   // シフトデータ抽出
   // -------------------------------------------------------
   function extractShifts() {
     const rows = [];
 
     const shiftTables = document.querySelectorAll('.shift-table');
+
+    const allDayGroups = [];
+    shiftTables.forEach(table => {
+      table.querySelectorAll('.daily-shift-group').forEach(g => allDayGroups.push(g));
+    });
+    const dateMap = computeDates(allDayGroups);
 
     shiftTables.forEach(table => {
       const termBar = table.querySelector('sp-creation-term-bar');
@@ -49,6 +138,8 @@
       dayGroups.forEach(g => {
         const day = (g.querySelector('.day')?.textContent ?? '').trim();
         const dow = (g.querySelector('.day-of-week')?.textContent ?? '').trim();
+        const dateInfo = dateMap.get(g);
+        const month = dateInfo ? dateInfo.month : '';
 
         const shopEls = g.querySelectorAll('sp-daily-shop');
         if (shopEls.length === 0) return;
@@ -59,7 +150,7 @@
           const endTime   = (shopEl.querySelector('.work-end')?.textContent ?? '').trim();
 
           if (!startTime) return; // 休みは除外
-          rows.push({ day, dow, shopName, startTime, endTime, status: '勤務', termStatus });
+          rows.push({ month, day, dow, shopName, startTime, endTime, status: '勤務', termStatus });
         });
       });
     });
@@ -81,7 +172,7 @@
         lines.push(`\n--- ${r.termStatus} ---`);
         lastTermStatus = r.termStatus;
       }
-      lines.push(`${r.day}(${r.dow})  ${r.shopName}  ${r.startTime} ～ ${r.endTime}`);
+      lines.push(`${r.month}/${r.day}(${r.dow})  ${r.shopName}  ${r.startTime} ～ ${r.endTime}`);
     });
 
     return lines.join('\n');
@@ -93,8 +184,8 @@
   function toCsv(rows) {
     const header = '日付,曜日,店舗名,開始,終了,状態,期間ステータス';
     const body = rows.map(r =>
-      [r.day, r.dow, r.shopName, r.startTime, r.endTime, r.status, r.termStatus]
-        .map(v => `"${(v ?? '').replace(/"/g, '""')}"`)
+      [`${r.month}/${r.day}`, r.dow, r.shopName, r.startTime, r.endTime, r.status, r.termStatus]
+        .map(v => `"${String(v ?? '').replace(/"/g, '""')}"`)
         .join(',')
     );
     return [header, ...body].join('\n');
