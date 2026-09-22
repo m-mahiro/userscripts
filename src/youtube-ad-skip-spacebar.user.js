@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Ad Skip → Spacebar
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.0.1-debug
+// @version      1.1.0
 // @description  YouTube の広告スキップボタンをスペースキーで押せるようにする
 // @author       m-mahiro
 // @match        https://www.youtube.com/*
@@ -14,15 +14,20 @@
 // ==/UserScript==
 
 // ## 概要
-// スペースキーが押されたとき、広告のスキップボタンが表示されていればそれをクリックする。
+// スペースキーが押されたとき、広告のスキップボタンが表示されていれば広告をスキップする。
 // スキップボタンがない状態でスペースキーを押した場合は、YouTube 本来の動作（再生/一時停止）に委ねる。
 //
 // ## 動作の仕組み
 // - keydown イベントを capture フェーズで捕捉し、YouTube 自身のハンドラより先に処理する
-// - 複数のセレクタを優先順に試してスキップボタンを探す（YouTube はクラス名を頻繁に変えるため）
+// - スキップは #movie_player の内部API `cancelPlayback()` を直接呼んで行う。
+//   スキップボタンへの合成クリック（dispatchEvent/.click()）は isTrusted: false になり、
+//   YouTube側の本来のスキップ処理には届かず、代わりに汎用の再生/一時停止トグルにしか
+//   ならないことが実機検証で確認されたため、この方式は採用していない。
+// - cancelPlayback() 実行後はプレイヤーが一時停止状態になるため、続けて playVideo() で
+//   再生を再開する。
 // - テキストボックス等にフォーカスがある場合は何もしない
 //
-// ## 対応セレクタ
+// ## 対応セレクタ（スキップボタンの検出用。フォールバッククリック方式でも使用）
 // - .ytp-skip-ad-button        （標準）
 // - .ytp-ad-skip-button        （別バリアント）
 // - .ytp-ad-skip-button-modern （モダン UI）
@@ -30,51 +35,6 @@
 
 (function () {
   'use strict';
-
-  // ---- デバッグ計装 (原因調査用。切り分けが終わったら削除する) ----
-  const DEBUG = true;
-  function dlog(...args) {
-    if (DEBUG) console.log('%c[AD-SKIP]', 'color:#e0a;font-weight:bold', ...args);
-  }
-  function playerState() {
-    const player = document.querySelector('#movie_player');
-    const video = document.querySelector('video');
-    return {
-      playerClasses: player ? player.className : null,
-      paused: video ? video.paused : null,
-      currentTime: video ? video.currentTime : null,
-    };
-  }
-  if (DEBUG) {
-    // 実際に発生したクリックが、どのフェーズで誰に処理されたかを見るための全体監視。
-    // capture フェーズでは event.target は常に元の要素なので、bubble 側の
-    // currentTarget も合わせて見る。
-    document.addEventListener(
-      'click',
-      function (e) {
-        dlog('[click observed]', {
-          phase: 'capture',
-          isTrusted: e.isTrusted,
-          target: e.target && e.target.className,
-          defaultPrevented: e.defaultPrevented,
-        });
-      },
-      true
-    );
-    document.addEventListener(
-      'click',
-      function (e) {
-        dlog('[click observed]', {
-          phase: 'bubble',
-          isTrusted: e.isTrusted,
-          target: e.target && e.target.className,
-          defaultPrevented: e.defaultPrevented,
-        });
-      },
-      false
-    );
-  }
-  // ---- デバッグ計装ここまで ----
 
   const SKIP_SELECTORS = [
     '.ytp-skip-ad-button',
@@ -92,18 +52,21 @@
     return null;
   }
 
+  // 合成クリックによるフォールバック（内部APIが使えない場合の最終手段）。
   function clickButton(btn) {
-    if (DEBUG) {
-      dlog('[clickButton] before', { id: btn.id, cls: btn.className, isConnected: btn.isConnected, ...playerState() });
-    }
     btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    btn.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true }));
+    btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     btn.click();
-    if (DEBUG) {
-      dlog('[clickButton] immediately after', { stillConnected: btn.isConnected, ...playerState() });
-      setTimeout(() => dlog('[clickButton] +300ms', { stillConnected: btn.isConnected, sameButtonStillFound: document.querySelector('.ytp-skip-ad-button') === btn, ...playerState() }), 300);
-      setTimeout(() => dlog('[clickButton] +1000ms', { stillConnected: btn.isConnected, newSkipButtonId: document.querySelector('.ytp-skip-ad-button')?.id, ...playerState() }), 1000);
+  }
+
+  function skipAd(btn) {
+    const player = document.querySelector('#movie_player');
+    if (player && typeof player.cancelPlayback === 'function' && typeof player.playVideo === 'function') {
+      player.cancelPlayback();
+      player.playVideo();
+      return;
     }
+    clickButton(btn);
   }
 
   function onKeyDown(e) {
@@ -113,18 +76,10 @@
 
     if (e.code === 'Space' || e.key === ' ') {
       const btn = findSkipButton();
-      if (DEBUG) {
-        dlog('[onKeyDown]', {
-          btnFound: !!btn,
-          btnId: btn ? btn.id : null,
-          activeElement: document.activeElement ? document.activeElement.tagName : null,
-          ...playerState(),
-        });
-      }
       if (btn) {
         e.preventDefault();
         e.stopPropagation();
-        clickButton(btn);
+        skipAd(btn);
       }
     }
   }
