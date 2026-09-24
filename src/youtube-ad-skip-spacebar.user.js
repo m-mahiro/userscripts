@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Ad Skip → Spacebar
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.2.0
+// @version      1.2.1
 // @description  YouTube の広告スキップボタンをスペースキーで押せるようにする
 // @author       m-mahiro
 // @match        https://www.youtube.com/*
@@ -23,6 +23,7 @@
 //   スキップボタンへの合成クリックは isTrusted: false になり、YouTube側の本来のスキップ処理には
 //   届かず、汎用の再生/一時停止トグルにしかならないことが実機検証で確認されたため。
 // - cancelPlayback() 実行後はプレイヤーが一時停止状態になるため、再生状態になるまで playVideo() を再試行する。
+// - YouTube はスペースの再生/一時停止を keyup で処理するため、スキップに使ったスペースの keyup も止める。
 // - テキストボックス等にフォーカスがある場合は何もしない
 //
 // ## 実行ログとアンケート（改良のための計測。詳細は logs/README があれば参照）
@@ -37,7 +38,7 @@
   // ログ送信
   // ============================================================
   const SCRIPT_NAME = 'youtube-ad-skip-spacebar';
-  const SCRIPT_VERSION = '1.2.0';
+  const SCRIPT_VERSION = '1.2.1';
   const LOG_URL = 'http://127.0.0.1:17321/log/' + SCRIPT_NAME;
   const SESSION_ID = Math.random().toString(36).slice(2, 8);
   const MAX_BUFFER = 1000;
@@ -311,6 +312,7 @@
     if (!isSpace(e)) return;
 
     const found = findSkipButton();
+    swallowSpaceKeyUp = !!found;
     log('decision', {
       stage: 'document-capture',
       btnFound: !!found,
@@ -329,7 +331,20 @@
     }
   }
 
+  // YouTube はスペースの再生/一時停止を keyup で処理する（keydown では動かない）。
+  // keydown だけ止めると、指を離した keyup で再生中の本編が一時停止されてしまう。
+  let swallowSpaceKeyUp = false;
+
+  function onKeyUp(e) {
+    if (!swallowSpaceKeyUp || !isSpace(e)) return;
+    swallowSpaceKeyUp = false;
+    e.preventDefault();
+    e.stopPropagation();
+    log('keyup-swallowed', snap());
+  }
+
   document.addEventListener('keydown', onKeyDown, { capture: true });
+  document.addEventListener('keyup', onKeyUp, { capture: true });
 
   // ============================================================
   // 広告の開始/終了とスキップボタン出現タイミングの記録
