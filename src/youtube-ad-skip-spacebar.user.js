@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Ad Skip → Spacebar
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.2.1
+// @version      1.2.2
 // @description  YouTube の広告スキップボタンをスペースキーで押せるようにする
 // @author       m-mahiro
 // @match        https://www.youtube.com/*
@@ -26,19 +26,24 @@
 // - YouTube はスペースの再生/一時停止を keyup で処理するため、スキップに使ったスペースの keyup も止める。
 // - テキストボックス等にフォーカスがある場合は何もしない
 //
-// ## 実行ログとアンケート（改良のための計測。詳細は logs/README があれば参照）
+// ## 開発モード（DEV_MODE）
+// リポジトリ上は常に false。true にすると、次の計測機能が有効になる（`tm install --dev` が書き換える想定）。
 // - イベントの流れ・プレイヤー状態・pause/play の呼び出し元スタックを、ローカルの
 //   tools/log-server.js (127.0.0.1:17321) に送る。サーバーが動いていなくても本機能には影響しない。
 // - スキップ実行後などに画面左下へ小さなアンケートを出し、結果を同じログに記録する。
+// false のときは、ログ送信・アンケート・イベント計測・広告の監視は一切行わない。
 
 (function () {
   'use strict';
 
+  // tm install --dev が、この行の false を true に書き換える。コミットする値は常に false。
+  const DEV_MODE = false;
+
   // ============================================================
-  // ログ送信
+  // ログ送信（DEV_MODE のときだけ動く）
   // ============================================================
   const SCRIPT_NAME = 'youtube-ad-skip-spacebar';
-  const SCRIPT_VERSION = '1.2.1';
+  const SCRIPT_VERSION = '1.2.2';
   const LOG_URL = 'http://127.0.0.1:17321/log/' + SCRIPT_NAME;
   const SESSION_ID = Math.random().toString(36).slice(2, 8);
   const MAX_BUFFER = 1000;
@@ -53,6 +58,7 @@
   }
 
   function log(type, data) {
+    if (!DEV_MODE) return;
     buffer.push({
       ts: Date.now(),
       perf: Math.round(performance.now()),
@@ -82,11 +88,13 @@
       });
   }
 
-  setInterval(flush, 1000);
-  window.addEventListener('pagehide', () => {
-    if (!buffer.length) return;
-    navigator.sendBeacon(LOG_URL, new Blob([JSON.stringify(buffer.splice(0, buffer.length))], { type: 'text/plain' }));
-  });
+  if (DEV_MODE) {
+    setInterval(flush, 1000);
+    window.addEventListener('pagehide', () => {
+      if (!buffer.length) return;
+      navigator.sendBeacon(LOG_URL, new Blob([JSON.stringify(buffer.splice(0, buffer.length))], { type: 'text/plain' }));
+    });
+  }
 
   // ============================================================
   // 状態取得の補助
@@ -139,56 +147,50 @@
   let lastSpaceAt = 0;
 
   // ============================================================
-  // 呼び出し元の記録（YouTube側が誰をいつ呼ぶかを見るための計測）
+  // 呼び出し元の記録（YouTube側が誰をいつ呼ぶかを見るための計測。DEV_MODE のときだけ）
   // ============================================================
-  for (const name of ['preventDefault', 'stopPropagation', 'stopImmediatePropagation']) {
-    const original = Event.prototype[name];
-    Event.prototype[name] = function () {
-      try {
-        if ((this.type === 'keydown' || this.type === 'keyup') && isSpace(this)) {
-          log('event-method', {
-            method: name,
-            evType: this.type,
-            phase: this.eventPhase,
-            currentTarget: describe(this.currentTarget),
-            stack: stackLines(),
-          });
-        }
-      } catch {}
-      return original.apply(this, arguments);
-    };
-  }
-
-  for (const name of ['pause', 'play']) {
-    const original = HTMLMediaElement.prototype[name];
-    HTMLMediaElement.prototype[name] = function () {
-      try {
-        if (isAdShowing() || Date.now() - lastSpaceAt < 6000) {
-          log('media-method', { method: name, ...snap(), stack: stackLines() });
-        }
-      } catch {}
-      return original.apply(this, arguments);
-    };
-  }
-
-  document.addEventListener(
-    'pause',
-    (e) => logMediaEvent(e),
-    true
-  );
-  for (const name of ['play', 'playing', 'emptied', 'loadstart', 'waiting']) {
-    document.addEventListener(name, (e) => logMediaEvent(e), true);
-  }
-
-  function logMediaEvent(e) {
-    if (isAdShowing() || Date.now() - lastSpaceAt < 6000) {
-      log('media-event', { evType: e.type, ...snap() });
+  function installDevInstrumentation() {
+    for (const name of ['preventDefault', 'stopPropagation', 'stopImmediatePropagation']) {
+      const original = Event.prototype[name];
+      Event.prototype[name] = function () {
+        try {
+          if ((this.type === 'keydown' || this.type === 'keyup') && isSpace(this)) {
+            log('event-method', {
+              method: name,
+              evType: this.type,
+              phase: this.eventPhase,
+              currentTarget: describe(this.currentTarget),
+              stack: stackLines(),
+            });
+          }
+        } catch {}
+        return original.apply(this, arguments);
+      };
     }
-  }
 
-  // window の capture は document より先に実行されるため、他のリスナーが触る前の状態が見える
-  function keyStageLogger(stage) {
-    return function (e) {
+    for (const name of ['pause', 'play']) {
+      const original = HTMLMediaElement.prototype[name];
+      HTMLMediaElement.prototype[name] = function () {
+        try {
+          if (isAdShowing() || Date.now() - lastSpaceAt < 6000) {
+            log('media-method', { method: name, ...snap(), stack: stackLines() });
+          }
+        } catch {}
+        return original.apply(this, arguments);
+      };
+    }
+
+    const logMediaEvent = (e) => {
+      if (isAdShowing() || Date.now() - lastSpaceAt < 6000) {
+        log('media-event', { evType: e.type, ...snap() });
+      }
+    };
+    for (const name of ['pause', 'play', 'playing', 'emptied', 'loadstart', 'waiting']) {
+      document.addEventListener(name, logMediaEvent, true);
+    }
+
+    // window の capture は document より先に実行されるため、他のリスナーが触る前の状態が見える
+    const keyStageLogger = (stage) => (e) => {
       if (!isSpace(e)) return;
       if (e.type === 'keydown') lastSpaceAt = Date.now();
       log('key', {
@@ -202,11 +204,12 @@
         ...snap(),
       });
     };
+    window.addEventListener('keydown', keyStageLogger('window-capture'), true);
+    window.addEventListener('keyup', keyStageLogger('window-capture'), true);
+    document.addEventListener('keyup', keyStageLogger('document-capture'), true);
   }
 
-  window.addEventListener('keydown', keyStageLogger('window-capture'), true);
-  window.addEventListener('keyup', keyStageLogger('window-capture'), true);
-  document.addEventListener('keyup', keyStageLogger('document-capture'), true);
+  if (DEV_MODE) installDevInstrumentation();
 
   // ============================================================
   // スキップボタンの検出
@@ -278,11 +281,15 @@
   }
 
   function skipAd(found) {
-    const attemptId = SESSION_ID + '-' + ++attemptCounter;
     const player = getPlayer();
     const useApi = !!player && typeof player.cancelPlayback === 'function' && typeof player.playVideo === 'function';
     lastSkipAttemptAt = Date.now();
-    log('skip-attempt', { attemptId, method: useApi ? 'api' : 'click-fallback', ...describeButton(found), ...snap() });
+
+    let attemptId;
+    if (DEV_MODE) {
+      attemptId = SESSION_ID + '-' + ++attemptCounter;
+      log('skip-attempt', { attemptId, method: useApi ? 'api' : 'click-fallback', ...describeButton(found), ...snap() });
+    }
 
     if (useApi) {
       player.cancelPlayback();
@@ -291,19 +298,25 @@
       clickButton(found.btn);
     }
 
-    for (const after of [0, 100, 300, 700, 1500, 3000, 5000]) {
-      setTimeout(() => log('timeline', { attemptId, after, ...snap() }), after);
+    if (DEV_MODE) {
+      for (const after of [0, 100, 300, 700, 1500, 3000, 5000]) {
+        setTimeout(() => log('timeline', { attemptId, after, ...snap() }), after);
+      }
+      setTimeout(
+        () =>
+          showSurvey(attemptId, '広告スキップは成功しましたか？', [
+            ['ok', '成功（再生された）'],
+            ['stopped', 'スキップしたが止まった'],
+            ['not-skipped', 'スキップされなかった'],
+          ]),
+        2500
+      );
     }
-    setTimeout(
-      () =>
-        showSurvey(attemptId, '広告スキップは成功しましたか？', [
-          ['ok', '成功（再生された）'],
-          ['stopped', 'スキップしたが止まった'],
-          ['not-skipped', 'スキップされなかった'],
-        ]),
-      2500
-    );
   }
+
+  // YouTube はスペースの再生/一時停止を keyup で処理する（keydown では動かない）。
+  // keydown だけ止めると、指を離した keyup で再生中の本編が一時停止されてしまう。
+  let swallowSpaceKeyUp = false;
 
   function onKeyDown(e) {
     const tag = document.activeElement?.tagName?.toLowerCase();
@@ -313,14 +326,16 @@
 
     const found = findSkipButton();
     swallowSpaceKeyUp = !!found;
-    log('decision', {
-      stage: 'document-capture',
-      btnFound: !!found,
-      ...(found ? describeButton(found) : {}),
-      adElapsedMs: adStartAt ? Date.now() - adStartAt : null,
-      repeat: e.repeat,
-      ...snap(),
-    });
+    if (DEV_MODE) {
+      log('decision', {
+        stage: 'document-capture',
+        btnFound: !!found,
+        ...(found ? describeButton(found) : {}),
+        adElapsedMs: adStartAt ? Date.now() - adStartAt : null,
+        repeat: e.repeat,
+        ...snap(),
+      });
+    }
 
     if (found) {
       e.preventDefault();
@@ -331,60 +346,58 @@
     }
   }
 
-  // YouTube はスペースの再生/一時停止を keyup で処理する（keydown では動かない）。
-  // keydown だけ止めると、指を離した keyup で再生中の本編が一時停止されてしまう。
-  let swallowSpaceKeyUp = false;
-
   function onKeyUp(e) {
     if (!swallowSpaceKeyUp || !isSpace(e)) return;
     swallowSpaceKeyUp = false;
     e.preventDefault();
     e.stopPropagation();
-    log('keyup-swallowed', snap());
+    if (DEV_MODE) log('keyup-swallowed', snap());
   }
 
   document.addEventListener('keydown', onKeyDown, { capture: true });
   document.addEventListener('keyup', onKeyUp, { capture: true });
 
   // ============================================================
-  // 広告の開始/終了とスキップボタン出現タイミングの記録
+  // 広告の開始/終了とスキップボタン出現タイミングの記録（DEV_MODE のときだけ）
   // ============================================================
   let adStartAt = null;
   let buttonSeen = false;
 
-  setInterval(() => {
-    const ad = isAdShowing();
-    if (ad && adStartAt === null) {
-      adStartAt = Date.now();
-      buttonSeen = false;
-      log('ad-start', snap());
-    }
-    if (ad && !buttonSeen) {
-      const found = findSkipButton();
-      if (found) {
-        buttonSeen = true;
-        log('skip-button-visible', { afterAdStartMs: Date.now() - adStartAt, ...describeButton(found) });
+  if (DEV_MODE) {
+    setInterval(() => {
+      const ad = isAdShowing();
+      if (ad && adStartAt === null) {
+        adStartAt = Date.now();
+        buttonSeen = false;
+        log('ad-start', snap());
       }
-    }
-    if (!ad && adStartAt !== null) {
-      const now = Date.now();
-      let endedBy = 'other';
-      if (now - lastSkipAttemptAt < 5000) endedBy = 'userscript-skip';
-      else if (now - lastSpaceNoButtonAt < 3000) endedBy = 'after-space-without-button';
-      log('ad-end', { durationMs: now - adStartAt, endedBy, buttonSeen, ...snap() });
-      if (endedBy === 'after-space-without-button') {
-        showSurvey(SESSION_ID + '-noBtn-' + now, 'スペース後に広告が終わりました。そのときスキップボタンは出ていましたか？', [
-          ['button-was-visible', '出ていた'],
-          ['button-was-not-visible', '出ていなかった'],
-          ['unknown', '覚えていない'],
-        ]);
+      if (ad && !buttonSeen) {
+        const found = findSkipButton();
+        if (found) {
+          buttonSeen = true;
+          log('skip-button-visible', { afterAdStartMs: Date.now() - adStartAt, ...describeButton(found) });
+        }
       }
-      adStartAt = null;
-    }
-  }, 250);
+      if (!ad && adStartAt !== null) {
+        const now = Date.now();
+        let endedBy = 'other';
+        if (now - lastSkipAttemptAt < 5000) endedBy = 'userscript-skip';
+        else if (now - lastSpaceNoButtonAt < 3000) endedBy = 'after-space-without-button';
+        log('ad-end', { durationMs: now - adStartAt, endedBy, buttonSeen, ...snap() });
+        if (endedBy === 'after-space-without-button') {
+          showSurvey(SESSION_ID + '-noBtn-' + now, 'スペース後に広告が終わりました。そのときスキップボタンは出ていましたか？', [
+            ['button-was-visible', '出ていた'],
+            ['button-was-not-visible', '出ていなかった'],
+            ['unknown', '覚えていない'],
+          ]);
+        }
+        adStartAt = null;
+      }
+    }, 250);
+  }
 
   // ============================================================
-  // アンケート（画面左下の小さな表示。結果はログに記録される）
+  // アンケート（画面左下の小さな表示。結果はログに記録される。DEV_MODE のときだけ呼ばれる）
   // ============================================================
   let surveyEl = null;
   let surveyTimer = null;
