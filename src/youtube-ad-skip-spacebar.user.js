@@ -44,10 +44,17 @@
     '[class*="skip_ad"]',
   ];
 
+  function isVisible(el) {
+    if (el.offsetParent === null) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    return getComputedStyle(el).visibility !== 'hidden';
+  }
+
   function findSkipButton() {
     for (const selector of SKIP_SELECTORS) {
       const btn = document.querySelector(selector);
-      if (btn && btn.offsetParent !== null) return btn;
+      if (btn && isVisible(btn)) return btn;
     }
     return null;
   }
@@ -59,11 +66,27 @@
     btn.click();
   }
 
+  // cancelPlayback() 直後は本編の読み込み中で playVideo() が無視されることがあるため、
+  // 再生状態(1)になるまで短い間隔で繰り返す。
+  function resumeUntilPlaying(player) {
+    const PLAYING = 1;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      if (player.getPlayerState() === PLAYING || tries > 20) {
+        clearInterval(timer);
+        return;
+      }
+      player.playVideo();
+    }, 150);
+    player.playVideo();
+  }
+
   function skipAd(btn) {
     const player = document.querySelector('#movie_player');
     if (player && typeof player.cancelPlayback === 'function' && typeof player.playVideo === 'function') {
       player.cancelPlayback();
-      player.playVideo();
+      resumeUntilPlaying(player);
       return;
     }
     clickButton(btn);
