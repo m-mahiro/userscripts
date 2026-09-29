@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Ad Skip → Spacebar
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.2.2
+// @version      1.2.3
 // @description  YouTube の広告スキップボタンをスペースキーで押せるようにする
 // @author       m-mahiro
 // @match        https://www.youtube.com/*
@@ -44,7 +44,7 @@
   // ログ送信（DEV_MODE のときだけ動く）
   // ============================================================
   const SCRIPT_NAME = 'youtube-ad-skip-spacebar';
-  const SCRIPT_VERSION = '1.2.2';
+  const SCRIPT_VERSION = '1.2.3';
   const LOG_URL = 'http://127.0.0.1:17321/log/' + SCRIPT_NAME;
   const SESSION_ID = Math.random().toString(36).slice(2, 8);
   const MAX_BUFFER = 1000;
@@ -363,8 +363,24 @@
   // ============================================================
   let adStartAt = null;
   let buttonSeen = false;
+  let lastManualClickAt = 0;
 
   if (DEV_MODE) {
+    // スペースバーを使わない操作（マウスでスキップボタンを直接クリックする等）による
+    // スキップを見分けるための記録。本物の(isTrusted)クリックだけを対象にする。
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (!e.isTrusted) return;
+        const found = findSkipButton();
+        if (found && (found.btn === e.target || found.btn.contains(e.target))) {
+          lastManualClickAt = Date.now();
+          log('manual-skip-click', { ...describeButton(found), ...snap() });
+        }
+      },
+      true
+    );
+
     setInterval(() => {
       const ad = isAdShowing();
       if (ad && adStartAt === null) {
@@ -383,6 +399,7 @@
         const now = Date.now();
         let endedBy = 'other';
         if (now - lastSkipAttemptAt < 5000) endedBy = 'userscript-skip';
+        else if (now - lastManualClickAt < 5000) endedBy = 'manual-click';
         else if (now - lastSpaceNoButtonAt < 3000) endedBy = 'after-space-without-button';
         log('ad-end', { durationMs: now - adStartAt, endedBy, buttonSeen, ...snap() });
         if (endedBy === 'after-space-without-button') {
@@ -438,6 +455,6 @@
     }
     document.documentElement.appendChild(box);
     surveyEl = box;
-    surveyTimer = setTimeout(() => answer('no-answer'), 15000);
+    surveyTimer = setTimeout(() => answer('no-answer'), 7000);
   }
 })();
