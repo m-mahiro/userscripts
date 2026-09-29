@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Watch Later Quick Remove
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.0.0
+// @version      1.1.0
 // @description  YouTube の再生リストページで、各動画の3点リーダーメニューの左に削除ボタンを追加し、1クリックで「後で見る」等のリストから削除できるようにする
 // @author       m-mahiro
 // @match        https://www.youtube.com/playlist*
@@ -24,8 +24,12 @@
 //   UI内部実装が変わっても壊れにくい。
 // - 動画行（ytd-playlist-video-renderer）は無限スクロールで後から追加されるため、
 //   MutationObserverで新しい行を検知し、都度ボタンを追加する。
-// - ポップアップメニューはページ内で使い回される単一のコンテナに描画されるため、
-//   対象行の3点リーダーをクリックした直後の内容を見て「から削除」項目を探す。
+// - ポップアップメニューはページ内で使い回される単一のコンテナに描画されており、閉じたあとも
+//   前回分の「から削除」要素がDOMに残ったまま（非表示）になる。これを考慮せず先頭一致だけで
+//   拾うと、2回目以降のクリックで残骸（非表示）の要素を誤クリックしてしまい、実際に開いている
+//   メニューには何も起きない、という不具合があったため、可視状態の要素だけを対象にしている。
+// - ボタンの色は3点リーダーのアイコンから computed style を読み取って合わせている
+//   （YouTube側の配色用CSS変数が要素によって解決されない場合があるため）。
 
 (function () {
   'use strict';
@@ -38,9 +42,15 @@
     return row.querySelector('ytd-menu-renderer yt-icon-button#button button');
   }
 
+  function isVisible(el) {
+    // 閉じたポップアップの中身はDOMに残ったまま非表示になるため、可視要素だけを対象にする
+    return el.offsetParent !== null;
+  }
+
   function findRemoveMenuItem() {
     const items = document.querySelectorAll('ytd-popup-container ytd-menu-service-item-renderer');
     for (const item of items) {
+      if (!isVisible(item)) continue;
       if (item.textContent && item.textContent.includes(REMOVE_TEXT)) {
         return item.querySelector('tp-yt-paper-item') || item;
       }
@@ -77,7 +87,14 @@
     })();
   }
 
-  function createQuickRemoveButton(row) {
+  function kebabIconColor(menuButton) {
+    // YouTube側の配色用CSS変数は要素によって解決されないことがあるため、
+    // 実際に描画されている3点リーダーの色をそのままコピーする
+    const icon = menuButton.querySelector('yt-icon') || menuButton;
+    return getComputedStyle(icon).color;
+  }
+
+  function createQuickRemoveButton(row, menuButton) {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset[BUTTON_MARK] = '1';
@@ -94,7 +111,7 @@
       'border:none',
       'border-radius:50%',
       'background:transparent',
-      'color:var(--yt-spec-icon-inactive, #909090)',
+      'color:' + kebabIconColor(menuButton),
       'cursor:pointer',
       'flex:0 0 auto',
     ].join(';');
@@ -133,10 +150,11 @@
     if (row.dataset[BUTTON_MARK]) return;
     const menuContainer = row.querySelector('#menu');
     if (!menuContainer || !menuContainer.parentElement) return;
-    if (!findMenuButton(row)) return;
+    const menuButton = findMenuButton(row);
+    if (!menuButton) return;
 
     row.dataset[BUTTON_MARK] = '1';
-    const button = createQuickRemoveButton(row);
+    const button = createQuickRemoveButton(row, menuButton);
     menuContainer.parentElement.insertBefore(button, menuContainer);
   }
 
