@@ -18,6 +18,12 @@ YouTube の広告スキップボタンをスペースキーで押せるように
 
 - **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/otasukeman-shift-exporter.user.js)**
 
+### YouTube Watch Later Quick Remove
+
+YouTube の再生リストページ（「後で見る」など）で、各動画の3点リーダーメニューの左にゴミ箱ボタンを追加します。押すとメニューを開閉する手間なく1クリックでリストから削除できます。
+
+- **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/youtube-watch-later-quick-remove.user.js)**
+
 ---
 
 ## 使い方
