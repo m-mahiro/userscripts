@@ -1,13 +1,13 @@
 # ユーザースクリプトの実行ログを無人で巡回し、問題があれば claude -p に調査・自動修正させる。
 # Windows タスクスケジューラから1日1回呼ばれる想定。
-# 実際の調査手順・修正方針・Slack通知の文面は tools/monitor-logs-prompt.md に書いてあり、
+# 実際の調査手順・修正方針・Slack通知の文面は tools/log-monitor/monitor-logs-prompt.md に書いてあり、
 # ここでは claude の起動、結果の受け取り、デスクトップ通知、実行記録の保存だけを行う。
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $repoRoot
 
-$promptPath = Join-Path $repoRoot 'tools\monitor-logs-prompt.md'
+$promptPath = Join-Path $repoRoot 'tools\log-monitor\monitor-logs-prompt.md'
 $prompt = Get-Content -Raw -Encoding utf8 $promptPath
 
 $runLogDir = Join-Path $repoRoot 'logs\monitor'

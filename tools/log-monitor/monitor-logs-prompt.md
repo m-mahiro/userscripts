@@ -26,7 +26,7 @@ git log（特に `debug/ad-skip-click-instrumentation` ブランチ）で追え�
 
 1. `git status` を確認し、現在のブランチが `debug/ad-skip-click-instrumentation` でなければ
    `git checkout debug/ad-skip-click-instrumentation` する（このブランチ以外では絶対に作業しない）。
-2. `tools/.monitor-state.json` を読む（無ければ `{}` として扱う）。
+2. `tools/log-monitor/.monitor-state.json` を読む（無ければ `{}` として扱う）。
    形は `{"lastProcessedTs": <epoch ms>}`。
 3. `logs/youtube-ad-skip-spacebar/*.jsonl` を読み、`ts > lastProcessedTs` の行だけを対象にする。
    対象が0件なら「異常なし」として手順7に進む。
@@ -55,7 +55,7 @@ git log（特に `debug/ad-skip-click-instrumentation` ブランチ）で追え�
      このリポジトリでの通常の規約）も付ける。
    - **`git push` は絶対にしない。`main` へのマージ・切り替えも絶対にしない。**
      コミットは `debug/ad-skip-click-instrumentation` に積むだけ。
-7. `tools/.monitor-state.json` を、処理した中で最大の `ts`（対象が0件なら変更不要）で上書きする。
+7. `tools/log-monitor/.monitor-state.json` を、処理した中で最大の `ts`（対象が0件なら変更不要）で上書きする。
 8. `logs/monitor/<今日の日付 YYYY-MM-DD>.md` に、今回の実行記録を書く（無ければ新規作成、同日に
    複数回実行された場合は追記）。内容: 実行時刻、対象件数、見つけた問題、取った行動（修正した/
    報告のみ/異常なし）、コミットした場合はコミットハッシュ。

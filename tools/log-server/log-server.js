@@ -1,5 +1,5 @@
 // ユーザースクリプトからのログを受け取り、logs/<スクリプト名>/<日付>.jsonl に追記するローカルサーバー。
-// 使い方: node tools/log-server.js  （既定ポート 17321、127.0.0.1 のみで待ち受け）
+// 使い方: node tools/log-server/log-server.js  （既定ポート 17321、127.0.0.1 のみで待ち受け）
 //
 // - 受け付けるのは POST /log/<スクリプト名>。<スクリプト名> は src/<スクリプト名>.user.js が存在するものだけ。
 // - アクセス元(Origin)は、そのスクリプトの @match から決める。他のサイトからの書き込みは拒否する。
@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = Number(process.env.LOG_PORT) || 17321;
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', '..');
 const LOG_ROOT = path.join(ROOT, 'logs');
 const SRC_DIR = path.join(ROOT, 'src');
 const MAX_BODY_BYTES = 1024 * 1024;

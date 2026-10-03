@@ -4,4 +4,4 @@ logs/*
 !logs/.gitkeep
 
 # ログ巡回タスクが前回どこまで処理したかを覚えておくための状態ファイル。マシン固有の実行状態なのでコミットしない
-tools/.monitor-state.json
+tools/log-monitor/.monitor-state.json
