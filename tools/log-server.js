@@ -22,7 +22,9 @@ function localDate(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// "https://*.example.com/*" のような @match を、Origin("https://a.example.com") と照合できる正規表現にする
+// "https://*.example.com/*" のような @match を、Origin("https://a.example.com") と照合できる正規表現にする。
+// パス部分は見ない(Originにパスは含まれないため)。マッチしない pattern (正規表現化できない特殊な形式)は null を返し、
+// 呼び出し側の filter(Boolean) で単純に無視される。
 function matchPatternToOriginRegex(pattern) {
   const m = /^(\*|https?):\/\/(\*|\*\.[^/*]+|[^/*]+)(?::\d+)?\//.exec(pattern);
   if (!m) return null;
@@ -35,6 +37,7 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// src/<script>.user.js が存在しない script に対しては null を返す。これが「未知のスクリプト名は404」の根拠になる。
 function allowedOriginRegexes(script) {
   let source;
   try {
@@ -45,6 +48,8 @@ function allowedOriginRegexes(script) {
   return [...source.matchAll(/^\/\/\s*@(?:match|include)\s+(\S+)/gm)].map((m) => matchPatternToOriginRegex(m[1])).filter(Boolean);
 }
 
+// 許可できないリクエストは null を返す。呼び出し側はこれを「404にする」判定に使う
+// (ヘッダを付けて拒否するとOriginの存在を教えてしまうため、素っ気なく404にする)。
 function corsHeaders(origin, regexes) {
   if (!origin || !regexes || !regexes.some((re) => re.test(origin))) return null;
   return {
@@ -60,6 +65,8 @@ const server = http.createServer((req, res) => {
   const origin = req.headers.origin;
   console.log(new Date().toISOString(), req.method, req.url, 'origin=' + origin);
 
+  // URL形式・スクリプトの実在・Origin の3つをまとめて検証する。どれか1つでも通らなければ headers が null になり、
+  // 下のガード節でまとめて404にする(ブラウザの preflight にも素っ気なく404を返すだけでよい)。
   const match = /^\/log\/([a-z0-9-]+)$/.exec(req.url || '');
   const script = match && match[1];
   const headers = script ? corsHeaders(origin, allowedOriginRegexes(script)) : null;
@@ -70,11 +77,14 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (req.method === 'OPTIONS') {
+    // CORS preflight。実データは持たないので、許可ヘッダだけ返して終わる。
     res.writeHead(204, headers);
     res.end();
     return;
   }
 
+  // ここから先は POST の本体(ログ本体)を受け取る処理。チャンク到着のたびにサイズを見て、
+  // 上限(1MB)を超えたら即座に打ち切る(メモリに溜め込みすぎない・巨大な誤送信を弾く)。
   const chunks = [];
   let size = 0;
   req.on('data', (chunk) => {
@@ -90,6 +100,7 @@ const server = http.createServer((req, res) => {
   req.on('end', () => {
     let records;
     try {
+      // 1件のオブジェクトでも配列でも受け付ける(ユーザースクリプト側がバッファして複数件まとめて送るため)。
       records = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!Array.isArray(records)) records = [records];
     } catch {
@@ -97,6 +108,8 @@ const server = http.createServer((req, res) => {
       res.end();
       return;
     }
+    // 日付ごとにファイルを分けるのは、1ファイルが無限に太らないようにするため。
+    // ファイル名は「保存した時点のサーバー日時」で決まる(レコード自体の ts は見ない)。
     const dir = path.join(LOG_ROOT, script);
     fs.mkdirSync(dir, { recursive: true });
     const lines = records.map((r) => JSON.stringify(r) + '\n').join('');
