@@ -24,6 +24,12 @@ YouTube の再生リストページ（「後で見る」など）で、各動画
 
 - **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/youtube-watch-later-quick-remove.user.js)**
 
+### YouTube Chat Toggle → B key
+
+YouTube のライブ配信・アーカイブ（チャットリプレイ）で B キーを押すと、チャット欄の表示/非表示を切り替えます。フルスクリーン/通常表示のどちらでも動作します。テキスト入力中や Ctrl/Alt/Meta との併用時は何もしません。
+
+- **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/youtube-chat-toggle-b-key.user.js)**
+
 
 ## 使い方
 
