@@ -2,7 +2,7 @@
 
 個人的に作成した UserScript のまとめです。
 
----
+
 
 ## スクリプト一覧
 
@@ -24,7 +24,6 @@ YouTube の再生リストページ（「後で見る」など）で、各動画
 
 - **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/youtube-watch-later-quick-remove.user.js)**
 
----
 
 ## 使い方
 
