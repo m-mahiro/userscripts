@@ -22,47 +22,63 @@
 スクリプト本体は `src/youtube-ad-skip-spacebar.user.js` にある。過去の経緯は
 git log（特に `debug/ad-skip-click-instrumentation` ブランチ）で追える。
 
+## 絶対に守るルール
+
+- **`main` への push・マージ・チェックアウトは絶対にしない。**
+- **PR をマージするのは人間だけ。** あなたは PR を作成・編集するが、マージは絶対にしない（`gh pr merge` 等も使わない）。
+- `claude/` で始まるブランチ以外に push しない。作業ブランチは必ず `claude/` 接頭辞で作る。
+- `tools/log-monitor/.monitor-state.json` 以外の `tools/` 配下の生成物は作らない。
+- **`tm install` を実行しない**（`tm` のどのサブコマンドも使わない）。`tm install` は Tampermonkey に登録された
+  実運用スクリプトの `@require file:///` を現在の作業ディレクトリの絶対パスに書き換えるため、
+  作業用の場所で実行すると実運用の拡張機能が壊れる。動作確認は `node --check` までに留める。
+
 ## 手順
 
-1. `git status` を確認し、現在のブランチが `debug/ad-skip-click-instrumentation` でなければ
-   `git checkout debug/ad-skip-click-instrumentation` する（このブランチ以外では絶対に作業しない）。
+1. `git status` を確認する。未コミットの変更がある場合は、それを壊さない（stash せず、そのまま残す）。
+   作業は `main` 以外から始め、`debug/ad-skip-click-instrumentation` を基点にする。
 2. `tools/log-monitor/.monitor-state.json` を読む（無ければ `{}` として扱う）。
    形は `{"lastProcessedTs": <epoch ms>}`。
 3. `logs/youtube-ad-skip-spacebar/*.jsonl` を読み、`ts > lastProcessedTs` の行だけを対象にする。
-   対象が0件なら「異常なし」として手順7に進む。
+   対象が0件なら「異常なし」として手順10に進む。
 4. 対象レコードの中から、問題を示すものを探す。
    - `survey` で `answer` が `stopped` または `not-skipped`
    - `ad-end` で `endedBy` が `other` のものが目立って多い、または明らかに不自然なパターン
    - その他、ログの中に一見して異常な値（エラーらしき文字列、想定外の type の多発等）
    見つかった問題ごとに、同じ `session` のレコードを前後にたどって、何が起きたかを再構成する。
-5. 原因をかなり高い確信を持って特定でき、かつ `src/youtube-ad-skip-spacebar.user.js`（または
-   `tools/` 配下の関連ファイル）の変更で直せると判断した場合に限り、修正を行う。
-   - 修正は最小限にする。関係のない整理・リファクタはしない。
-   - `@version` を上げる。
-   - `node --check src/youtube-ad-skip-spacebar.user.js` で構文を確認する。
-   - 自信が持てない場合は、**絶対にコードを変更しない**。報告だけに留める。
-     （原因候補が複数あって絞り込めない、再現パターンが1件しかなく偶然の可能性がある、等は
-     「自信が持てない」に該当する。）
-6. 修正した場合は、**次の形式で**コミットする。
+5. 問題ごとに、**Issue を必ず1件立てる**（原因の確信度に関係なく、問題が見つかったら必ず作る）。
+   - 既存の重複確認: `gh issue list --state open` で、同じ症状を扱う open な Issue が既にあるかを確認する。
+     あれば新規 Issue は作らず、そのIssueに今回の検出内容（日時・件数・根拠ログ）をコメントで追記する。
+     この場合は手順6以降で PR を作る必要はない（修正が既に進行中のPRがあればそれを更新する）。
+   - Issue の本文には、検出した問題（該当ログの type・件数・具体的な値）、根拠にしたログの記述、
+     原因の推定（確信度を明記する）を書く。
+6. 修正方針を決める。確信度は次の2段階で扱う。
+   - **かなり高い確信がある**: 最小限の修正を行い、`@version` を上げ、`node --check` で構文確認する。
+   - **確信がない**: 仮説の段階でよい。仮説に基づく修正案を PR として作ってよい（人間がレビューして
+     マージしない限り、コードは本番に反映されないため）。ただし、その PR の説明文で「未検証の仮説」であることを明記する。
+   - 関係のない整理・リファクタはしない。
+7. PR を作る場合は、次の規約に従う（修正を伴わない調査結果だけなら PR は作らず、Issue だけでよい）。
+   - ブランチ名: `claude/issue-<Issue番号>-<短い英語の説明>`（例: `claude/issue-12-ad-skip-regression`）。
+     `#` はブランチ名に含めない。
+   - 作業ブランチは `debug/ad-skip-click-instrumentation`（または最新の作業基点）から切る。
    - コミットメッセージの先頭は `ai-auto-fix: ` で始める。
-   - 本文に次を含める:
+   - コミット本文には次を含める:
      - このコミットが、1日1回の無人スケジュール実行によって、**ユーザーの確認なしに自動的に
        適用されたものであること**を明記する。
-     - 検出した問題（該当ログの type・件数・具体的な値）。
-     - 原因の推定（根拠にしたログの記述を添える）。
-     - 行った修正の内容。
-   - `git commit` の末尾には、通常のアトリビューション行（`Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` 等、
-     このリポジトリでの通常の規約）も付ける。
-   - **`git push` は絶対にしない。`main` へのマージ・切り替えも絶対にしない。**
-     コミットは `debug/ad-skip-click-instrumentation` に積むだけ。
-7. `tools/log-monitor/.monitor-state.json` を、処理した中で最大の `ts`（対象が0件なら変更不要）で上書きする。
-8. `logs/monitor/<今日の日付 YYYY-MM-DD>.md` に、今回の実行記録を書く（無ければ新規作成、同日に
-   複数回実行された場合は追記）。内容: 実行時刻、対象件数、見つけた問題、取った行動（修正した/
-   報告のみ/異常なし）、コミットした場合はコミットハッシュ。
-9. 問題が見つかった場合（修正した・報告のみ、いずれも含む）は、Slackチャンネル `C0C635QQW85`
-   （`mcp__claude_ai_Slack__slack_send_message` を使う）に日本語で要約を送る。内容は、
-   何が起きたか・自動修正したかどうか（した場合はコミットハッシュ）・ユーザーに確認してほしい
-   ことがあれば何か、を簡潔に。**異常なしの場合はSlackに何も送らない。**
+     - 対象Issueの番号（`Refs #<番号>`）。
+     - 原因の推定と、行った修正の内容。
+   - `git commit` の末尾には `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` を付ける。
+   - push は `claude/` ブランチへ行う（`git push -u origin <claude/ブランチ名>`）。
+   - PR 本文の先頭に `Closes #<Issue番号>` を入れて、Issue と必ず紐付ける。
+     PR のタイトルは `ai-auto-fix: <短い説明>` とする。
+   - 末尾に `🤖 Generated with [Claude Code](https://claude.com/claude-code)` を付ける。
+8. `tools/log-monitor/.monitor-state.json` を、処理した中で最大の `ts`（対象が0件なら変更不要）で上書きする。
+9. `logs/monitor/<今日の日付 YYYY-MM-DD>.md` に、今回の実行記録を書く（無ければ新規作成、同日に
+   複数回実行された場合は追記）。内容: 実行時刻、対象件数、見つけた問題、作成/更新した Issue・PR の番号と URL、
+   取った行動（修正PR作成/Issue追記のみ/異常なし）。
+10. 問題が見つかった場合（Issue を作った・追記した、いずれも含む）は、Slackチャンネル `C0C635QQW85`
+    （`mcp__claude_ai_Slack__slack_send_message` を使う）に日本語で要約を送る。内容は、
+    何が起きたか・作成した Issue/PR の URL・ユーザーに確認してほしいことがあれば何か、を簡潔に。
+    **異常なしの場合はSlackに何も送らない。**
 
 ## 最後の出力について
 
