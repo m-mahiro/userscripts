@@ -1,1 +1,7 @@
 .claude/local/
+# ユーザースクリプトが送ってくる実行ログ。視聴履歴(動画ID等)を含むためコミットしない
+logs/*
+!logs/.gitkeep
+
+# ログ巡回タスクが前回どこまで処理したかを覚えておくための状態ファイル。マシン固有の実行状態なのでコミットしない
+tools/log-monitor/.monitor-state.json
