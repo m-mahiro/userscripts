@@ -28,9 +28,12 @@ git log（特に `debug/ad-skip-click-instrumentation` ブランチ）で追え�
 - **PR をマージするのは人間だけ。** あなたは PR を作成・編集するが、マージは絶対にしない（`gh pr merge` 等も使わない）。
 - `claude/` で始まるブランチ以外に push しない。作業ブランチは必ず `claude/` 接頭辞で作る。
 - `tools/log-monitor/.monitor-state.json` 以外の `tools/` 配下の生成物は作らない。
-- **`tm install` を実行しない**（`tm` のどのサブコマンドも使わない）。`tm install` は Tampermonkey に登録された
-  実運用スクリプトの `@require file:///` を現在の作業ディレクトリの絶対パスに書き換えるため、
+- **`tm` CLI（`tm install` を含む全サブコマンド）を実行しない。** `tm install` は人間向けのコマンドで、
+  実行後にGUIのダイアログが表示されるため、AIが使うべきではない。また、Tampermonkey に登録された
+  実運用スクリプトの `@require file:///` を作業ディレクトリの絶対パスに書き換えるため、
   作業用の場所で実行すると実運用の拡張機能が壊れる。動作確認は `node --check` までに留める。
+- 例外: デバッグ用スクリプトの Tampermonkey へのインストール・アンインストールは、`tampermonkey-mcp`
+  （`mcp__tampermonkey__*`）を使ってよい。
 
 ## 手順
 
