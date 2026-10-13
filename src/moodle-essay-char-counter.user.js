@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Essay Char Counter
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.0.0
+// @version      1.0.1
 // @description  Moodle の小テスト（記述式・装飾なし）の入力欄に、入力中の文字数をリアルタイムで表示する
 // @author       m-mahiro
 // @match        https://*.wakayama-u.ac.jp/mod/quiz/attempt.php*
@@ -19,6 +19,8 @@
 //
 // ## 対象
 // - https://*.wakayama-u.ac.jp/mod/quiz/attempt.php* （小テストの受験画面）
+//   - Moodle のホスト名は moodle2026.wakayama-u.ac.jp のように年度で変わる。@match はサブドメインを
+//     ワイルドカードにし、ホスト名が moodle<数字>. で始まるときだけ動くよう本文側で絞っている
 // - 入力欄は textarea.qtype_essay_plain（qtype_essay_format_plain_renderer が出力する要素）
 //   - HTML エディタ（装飾あり）の問題は対象外
 //   - 読み取り専用（readonly）の入力欄は対象外
@@ -38,6 +40,9 @@
 
 (function () {
   'use strict';
+
+  // 年度ごとに変わる Moodle のホスト名（moodle2026.wakayama-u.ac.jp など）以外では何もしない
+  if (!/^moodle\d*\./.test(location.hostname)) return;
 
   const TARGET_SELECTOR = 'textarea.qtype_essay_plain';
   const COUNTER_CLASS = 'qtype-essay-char-counter';
