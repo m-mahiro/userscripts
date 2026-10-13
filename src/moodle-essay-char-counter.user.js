@@ -4,7 +4,7 @@
 // @version      1.0.1
 // @description  Moodle の小テスト（記述式・装飾なし）の入力欄に、入力中の文字数をリアルタイムで表示する
 // @author       m-mahiro
-// @match        https://*.wakayama-u.ac.jp/mod/quiz/attempt.php*
+// @match        https://moodle2026.wakayama-u.ac.jp/*
 // @icon         https://moodle.org/favicon.ico
 // @updateURL    https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/moodle-essay-char-counter.user.js
 // @downloadURL  https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/moodle-essay-char-counter.user.js
