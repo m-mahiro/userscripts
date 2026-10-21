@@ -7,6 +7,13 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $repoRoot
 
+Write-Host '=============================================='
+Write-Host ' userscripts-log-monitor (Windows タスクスケジューラ)'
+Write-Host ' ログを無人で巡回し、問題があれば claude -p に調査・自動修正させています。'
+Write-Host ' このウィンドウは毎日14:00に自動で開きます。異常な起動ではありません。'
+Write-Host ' 処理が終わると、このウィンドウはしばらく結果を表示したまま自動で閉じます。'
+Write-Host '=============================================='
+
 $promptPath = Join-Path $repoRoot 'tools\log-monitor\monitor-logs-prompt.md'
 $prompt = Get-Content -Raw -Encoding utf8 $promptPath
 
@@ -81,3 +88,11 @@ switch -Wildcard ($statusLine) {
 
 $recordPath = Join-Path $runLogDir ((Get-Date -Format 'yyyy-MM-dd') + '_wrapper.log')
 Add-Content -Path $recordPath -Value "$(Get-Date -Format o) status=$statusLine raw=$rawOutPath"
+
+Write-Host ''
+Write-Host '--- 実行結果 ---'
+Write-Host $statusLine
+if ($summary) { Write-Host $summary }
+Write-Host ''
+Write-Host 'このウィンドウは30秒後に自動で閉じます（タスクスケジューラによる定期実行です）。'
+Start-Sleep -Seconds 30
