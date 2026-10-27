@@ -32,7 +32,7 @@ YouTube のライブ配信・アーカイブ（チャットリプレイ）で B 
 
 ### Moodle Essay Char Counter
 
-Moodle の小テストの記述式問題（回答形式が「テキスト入力（装飾なし）」のもの）で、入力欄の下に入力中の文字数をリアルタイムで表示します。文字数は Moodle 本体の `count_letters()` と同じ数え方（空白・改行を除く）で、あわせて空白込みの文字数も表示します。
+Moodle の小テストの記述式問題（回答形式が「テキスト入力（装飾なし）」のもの）で、入力欄の下に入力中の文字数をリアルタイムで表示します。文字数は Moodle 本体の `count_letters()` と同じ数え方（空白・改行を除く）で、あわせて空白込みの文字数も表示します。文字を選択しているときは、選択中の文字についても同じ数え方で表示します。
 
 - **[インストール](https://raw.githubusercontent.com/m-mahiro/userscripts/main/src/moodle-essay-char-counter.user.js)**
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Essay Char Counter
 // @namespace    https://github.com/m-mahiro/userscripts
-// @version      1.0.1
+// @version      1.1.0
 // @description  Moodle の小テスト（記述式・装飾なし）の入力欄に、入力中の文字数をリアルタイムで表示する
 // @author       m-mahiro
 // @match        https://moodle2026.wakayama-u.ac.jp/*
@@ -18,12 +18,16 @@
 // 問題文に「300字程度」などと書かれていても、Moodle 標準では学生側に文字数が出ないため、それを補う。
 //
 // ## 対象
-// - https://*.wakayama-u.ac.jp/mod/quiz/attempt.php* （小テストの受験画面）
-//   - Moodle のホスト名は moodle2026.wakayama-u.ac.jp のように年度で変わる。@match はサブドメインを
-//     ワイルドカードにし、ホスト名が moodle<数字>. で始まるときだけ動くよう本文側で絞っている
+// - https://moodle2026.wakayama-u.ac.jp/* （@match はホスト名ごと固定。年度が変わったら @match の年を更新する）
+//   - 本文側でも、ホスト名が moodle<数字>. で始まるときだけ動くようにしている
 // - 入力欄は textarea.qtype_essay_plain（qtype_essay_format_plain_renderer が出力する要素）
-//   - HTML エディタ（装飾あり）の問題は対象外
+//   - 小テストの受験画面（mod/quiz/attempt.php）にだけ存在する。HTML エディタ（装飾あり）の問題は対象外
 //   - 読み取り専用（readonly）の入力欄は対象外
+//
+// ## 表示
+// - 常に: 入力欄全体の文字数
+// - 文字を選択しているとき: 全体の文字数に加えて、選択中の文字についても同じ数え方で表示する
+//   （選択を解除すると選択中の表示は消える）
 //
 // ## 文字数の数え方
 // Moodle 本体の count_letters()（public/lib/moodlelib.php）と同じ手順で数える。
@@ -95,15 +99,50 @@
     textarea.dataset.charCounterAttached = '1';
 
     const counter = document.createElement('div');
-    counter.className = `${COUNTER_CLASS} text-muted small text-end mt-1`;
+    counter.className = `${COUNTER_CLASS} text-muted small`;
+    // Bootstrap のバージョンによってユーティリティクラス名が違うため、配置と強調はインラインで指定する
+    counter.style.cssText = 'text-align: right; margin-top: 0.25rem;';
     counter.setAttribute('aria-live', 'off');
+    const total = document.createElement('span');
+    const selected = document.createElement('span');
+    selected.className = `${COUNTER_CLASS}-selected`;
+    selected.style.cssText = 'margin-left: 1em; font-weight: bold;';
+    selected.hidden = true;
+    counter.append(total, selected);
     textarea.insertAdjacentElement('afterend', counter);
+
+    const format = (label, text) =>
+      `${label}: ${countLetters(text)}（空白・改行を除く）／ 空白込み: ${countAll(text)}`;
 
     const update = () => {
       const value = textarea.value;
-      counter.textContent = `文字数: ${countLetters(value)}（空白・改行を除く）／ 空白込み: ${countAll(value)}`;
+      total.textContent = format('文字数', value);
+
+      const { selectionStart: start, selectionEnd: end } = textarea;
+      const hasSelection = start !== end;
+      selected.hidden = !hasSelection;
+      if (hasSelection) selected.textContent = format('選択中', value.slice(start, end));
+    };
+
+    // 選択範囲の変化を拾えるイベントは環境ごとに差があるため、複数のイベントで同じ更新処理を呼ぶ。
+    // - select: 選択が変わったとき（Firefox など）
+    // - selectionchange（document）: textarea 内の選択変更（ドラッグ・Shift+矢印・タッチ操作のハンドル移動）
+    // - keyup / mouseup / touchend: 上の 2 つが飛ばないブラウザの取りこぼしを埋める
+    // 1 回の操作で複数のイベントが続けて来るため、描画前に 1 回だけ更新する。
+    let scheduled = false;
+    const scheduleUpdate = () => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        update();
+      });
     };
     textarea.addEventListener('input', update);
+    ['select', 'keyup', 'mouseup', 'touchend'].forEach((type) => textarea.addEventListener(type, scheduleUpdate));
+    document.addEventListener('selectionchange', () => {
+      if (document.activeElement === textarea) scheduleUpdate();
+    });
     update();
   }
 
