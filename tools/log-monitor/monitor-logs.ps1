@@ -1,4 +1,4 @@
-# ユーザースクリプトの実行ログを無人で巡回し、問題があれば claude -p に調査・自動修正させる。
+﻿# ユーザースクリプトの実行ログを無人で巡回し、問題があれば claude -p に調査・自動修正させる。
 # Windows タスクスケジューラから1日1回呼ばれる想定。
 # 実際の調査手順・修正方針・Slack通知の文面は tools/log-monitor/monitor-logs-prompt.md に書いてあり、
 # ここでは claude の起動、結果の受け取り、デスクトップ通知、実行記録の保存だけを行う。
@@ -11,7 +11,7 @@ Write-Host '=============================================='
 Write-Host ' userscripts-log-monitor (Windows タスクスケジューラ)'
 Write-Host ' ログを無人で巡回し、問題があれば claude -p に調査・自動修正させています。'
 Write-Host ' このウィンドウは毎日14:00に自動で開きます。異常な起動ではありません。'
-Write-Host ' 処理が終わると、このウィンドウはしばらく結果を表示したまま自動で閉じます。'
+Write-Host ' 処理が終わると、このウィンドウに結果を表示します。Enterキーを押すまで閉じません。'
 Write-Host '=============================================='
 
 $promptPath = Join-Path $repoRoot 'tools\log-monitor\monitor-logs-prompt.md'
@@ -52,8 +52,14 @@ if ($resultJson) {
     $parsed = $resultJson | ConvertFrom-Json
     $resultText = $parsed.result
     $lines = $resultText -split "`r?`n"
-    $statusLine = $lines[0]
-    $summary = ($lines | Select-Object -Skip 1) -join "`n"
+    $statusIndex = ($lines | Select-String -Pattern '^STATUS: ' | Select-Object -First 1).LineNumber
+    if ($statusIndex) {
+      $statusLine = $lines[$statusIndex - 1]
+      $summary = (($lines | Select-Object -Index (0..($lines.Count - 1) | Where-Object { $_ -ne ($statusIndex - 1) })) -join "`n").Trim()
+    } else {
+      $statusLine = $lines[0]
+      $summary = ($lines | Select-Object -Skip 1) -join "`n"
+    }
   } catch {
     $summary = "claude -p の出力(JSON)の解析に失敗しました。生の出力: $rawOutPath を確認してください。"
   }
@@ -94,5 +100,5 @@ Write-Host '--- 実行結果 ---'
 Write-Host $statusLine
 if ($summary) { Write-Host $summary }
 Write-Host ''
-Write-Host 'このウィンドウは30秒後に自動で閉じます（タスクスケジューラによる定期実行です）。'
-Start-Sleep -Seconds 30
+Write-Host 'Enterキーを押すとこのウィンドウを閉じます（タスクスケジューラによる定期実行です）。'
+$null = Read-Host
