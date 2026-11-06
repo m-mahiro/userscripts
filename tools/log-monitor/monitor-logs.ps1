@@ -94,5 +94,5 @@ Write-Host '--- 実行結果 ---'
 Write-Host $statusLine
 if ($summary) { Write-Host $summary }
 Write-Host ''
-Write-Host 'このウィンドウは30秒後に自動で閉じます（タスクスケジューラによる定期実行です）。'
-Start-Sleep -Seconds 30
+Write-Host 'Enterキーを押すとこのウィンドウを閉じます（タスクスケジューラによる定期実行です）。'
+$null = Read-Host
